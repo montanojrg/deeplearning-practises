@@ -1,0 +1,259 @@
+Pre-trained-Models with PyTorch 
+In this lab, you will use pre-trained models to classify between the negative and positive samples; you will be provided with the dataset object. The particular pre-trained model will be resnet18; you will have three questions:
+
+change the output layer
+train the model
+identify several misclassified samples
+You will take several screenshots of your work and share your notebook.
+Table of Contents
+Download Data
+Imports and Auxiliary Functions
+Dataset Class
+Question 1
+Question 2
+Question 3
+Estimated Time Needed: 120 min
+
+Download Data
+Download the dataset and unzip the files in your data directory, unlike the other labs, all the data will be deleted after you close the lab, this may take some time:
+
+!wget https://s3-api.us-geo.objectstorage.softlayer.net/cf-courses-data/CognitiveClass/DL0321EN/data/images/Positive_tensors.zip 
+--2022-02-03 08:09:25--  https://s3-api.us-geo.objectstorage.softlayer.net/cf-courses-data/CognitiveClass/DL0321EN/data/images/Positive_tensors.zip
+Resolving s3-api.us-geo.objectstorage.softlayer.net (s3-api.us-geo.objectstorage.softlayer.net)... 67.228.254.196
+Connecting to s3-api.us-geo.objectstorage.softlayer.net (s3-api.us-geo.objectstorage.softlayer.net)|67.228.254.196|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 2598656062 (2.4G) [application/zip]
+Saving to: ‘Positive_tensors.zip’
+
+Positive_tensors.zi 100%[===================>]   2.42G  32.6MB/s    in 80s     
+
+2022-02-03 08:10:46 (30.9 MB/s) - ‘Positive_tensors.zip’ saved [2598656062/2598656062]
+
+!unzip -q Positive_tensors.zip 
+print("done")
+done
+! wget https://s3-api.us-geo.objectstorage.softlayer.net/cf-courses-data/CognitiveClass/DL0321EN/data/images/Negative_tensors.zip
+!unzip -q Negative_tensors.zip
+print("done")
+--2022-02-03 08:21:30--  https://s3-api.us-geo.objectstorage.softlayer.net/cf-courses-data/CognitiveClass/DL0321EN/data/images/Negative_tensors.zip
+Resolving s3-api.us-geo.objectstorage.softlayer.net (s3-api.us-geo.objectstorage.softlayer.net)... 67.228.254.196
+Connecting to s3-api.us-geo.objectstorage.softlayer.net (s3-api.us-geo.objectstorage.softlayer.net)|67.228.254.196|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 2111408108 (2.0G) [application/zip]
+Saving to: ‘Negative_tensors.zip’
+
+Negative_tensors.zi 100%[===================>]   1.97G  26.3MB/s    in 69s     
+
+2022-02-03 08:22:40 (29.1 MB/s) - ‘Negative_tensors.zip’ saved [2111408108/2111408108]
+
+done
+We will install torchvision:
+
+!pip install torchvision
+print("done")
+Requirement already satisfied: torchvision in /opt/conda/envs/Python-3.8-main/lib/python3.8/site-packages (0.8.2)
+Requirement already satisfied: numpy in /opt/conda/envs/Python-3.8-main/lib/python3.8/site-packages (from torchvision) (1.19.2)
+Requirement already satisfied: torch in /opt/conda/envs/Python-3.8-main/lib/python3.8/site-packages (from torchvision) (1.7.1)
+Requirement already satisfied: pillow>=4.1.1 in /opt/conda/envs/Python-3.8-main/lib/python3.8/site-packages (from torchvision) (8.4.0)
+Requirement already satisfied: typing_extensions in /opt/conda/envs/Python-3.8-main/lib/python3.8/site-packages (from torch->torchvision) (3.7.4.3)
+done
+print("a")
+a
+Imports and Auxiliary Functions
+The following are the libraries we are going to use for this lab. The torch.manual_seed() is for forcing the random function to give the same number every time we try to recompile it.
+
+# These are the libraries will be used for this lab.
+import torchvision.models as models
+from PIL import Image
+import pandas
+from torchvision import transforms
+import torch.nn as nn
+import time
+import torch 
+import matplotlib.pylab as plt
+import numpy as np
+from torch.utils.data import Dataset, DataLoader
+import h5py
+import os
+import glob
+torch.manual_seed(0)
+<torch._C.Generator at 0x7fe560164490>
+from matplotlib.pyplot import imshow
+import matplotlib.pylab as plt
+from PIL import Image
+import pandas as pd
+import os
+Dataset Class
+This dataset class is essentially the same dataset you build in the previous section, but to speed things up, we are going to use tensors instead of jpeg images. Therefor for each iteration, you will skip the reshape step, conversion step to tensors and normalization step.
+
+# Create your own dataset object
+​
+class Dataset(Dataset):
+​
+    # Constructor
+    def __init__(self,transform=None,train=True):
+        directory="/home/dsxuser/work"
+        positive="Positive_tensors"
+        negative='Negative_tensors'
+​
+        positive_file_path=os.path.join(directory,positive)
+        negative_file_path=os.path.join(directory,negative)
+        positive_files=[os.path.join(positive_file_path,file) for file in os.listdir(positive_file_path) if file.endswith(".pt")]
+        negative_files=[os.path.join(negative_file_path,file) for file in os.listdir(negative_file_path) if file.endswith(".pt")]
+        number_of_samples=len(positive_files)+len(negative_files)
+        self.all_files=[None]*number_of_samples
+        self.all_files[::2]=positive_files
+        self.all_files[1::2]=negative_files 
+        # The transform is goint to be used on image
+        self.transform = transform
+        #torch.LongTensor
+        self.Y=torch.zeros([number_of_samples]).type(torch.LongTensor)
+        self.Y[::2]=1
+        self.Y[1::2]=0
+        
+        if train:
+            self.all_files=self.all_files[0:30000]
+            self.Y=self.Y[0:30000]
+            self.len=len(self.all_files)
+        else:
+            self.all_files=self.all_files[30000:]
+            self.Y=self.Y[30000:]
+            self.len=len(self.all_files)     
+       
+    # Get the length
+    def __len__(self):
+        return self.len
+    
+    # Getter
+    def __getitem__(self, idx):
+               
+        image=torch.load(self.all_files[idx])
+        y=self.Y[idx]
+                  
+        # If there is any transform method, apply it onto the image
+        if self.transform:
+            image = self.transform(image)
+​
+        return image, y
+    
+print("done")
+done
+We create two dataset objects, one for the training data and one for the validation data.
+
+train_dataset = Dataset(train=True)
+validation_dataset = Dataset(train=False)
+print("done")
+---------------------------------------------------------------------------
+FileNotFoundError                         Traceback (most recent call last)
+/tmp/wsuser/ipykernel_155/925652021.py in <module>
+----> 1 train_dataset = Dataset(train=True)
+      2 validation_dataset = Dataset(train=False)
+      3 print("done")
+
+/tmp/wsuser/ipykernel_155/1186779120.py in __init__(self, transform, train)
+     11         positive_file_path=os.path.join(directory,positive)
+     12         negative_file_path=os.path.join(directory,negative)
+---> 13         positive_files=[os.path.join(positive_file_path,file) for file in os.listdir(positive_file_path) if file.endswith(".pt")]
+     14         negative_files=[os.path.join(negative_file_path,file) for file in os.listdir(negative_file_path) if file.endswith(".pt")]
+     15         number_of_samples=len(positive_files)+len(negative_files)
+
+FileNotFoundError: [Errno 2] No such file or directory: '/home/dsxuser/work/Positive_tensors'
+
+Question 1
+Prepare a pre-trained resnet18 model :
+
+Step 1: Load the pre-trained model resnet18 Set the parameter pretrained to true:
+
+# Step 1: Load the pre-trained model resnet18
+model = models.resnet18(pretrained =  True)
+# Type your code here
+Step 2: Set the attribute requires_grad to False. As a result, the parameters will not be affected by training.
+
+# Step 2: Set the parameter cannot be trained for the pre-trained model
+for param in model.parameters():
+    param.requires_grad = False
+​
+# Type your code here
+resnet18 is used to classify 1000 different objects; as a result, the last layer has 1000 outputs. The 512 inputs come from the fact that the previously hidden layer has 512 outputs.
+
+Step 3: Replace the output layer model.fc of the neural network with a nn.Linear object, to classify 2 different classes. For the parameters in_features  remember the last hidden layer has 512 neurons.
+
+model.fc = nn.Linear(512, 1000) 
+Print out the model in order to show whether you get the correct answer.
+(Your peer reviewer is going to mark based on what you print here.)
+
+print(model)
+Question 2: Train the Model
+In this question you will train your, model:
+
+Step 1: Create a cross entropy criterion function
+
+# Step 1: Create the loss function
+criterion = nn.CrossEntropyLoss()
+​
+# Type your code here
+Step 2: Create a training loader and validation loader object, the batch size should have 100 samples each.
+
+train_loader   = torch.utils.data.DataLoader(dataset = train_dataset,batch_size = 100)
+validation_loader = torch.utils.data.DataLoader(dataset = validation_dataset ,batch_size = 100)
+Step 3: Use the following optimizer to minimize the loss
+
+optimizer = torch.optim.Adam([parameters  for parameters in model.parameters() if parameters.requires_grad],lr=0.001)
+Complete the following code to calculate the accuracy on the validation data for one epoch; this should take about 45 minutes. Make sure you calculate the accuracy on the validation data.
+
+n_epochs=1
+loss_list=[]
+accuracy_list=[]
+correct=0
+N_test=len(validation_dataset)
+N_train=len(train_dataset)
+start_time = time.time()
+#n_epochs
+​
+Loss=0
+start_time = time.time()
+for epoch in range(n_epochs):
+    loss_sublist = []
+    for x, y in train_loader:
+​
+        model.train() 
+        #clear gradient 
+        optimizer.zero_grad()
+        #make a prediction 
+        z = model(x)
+        # calculate loss 
+        loss = criterion(z,y)
+        # calculate gradients of parameters 
+        loss_sublist.append(loss.data.item())
+        # update parameters 
+        loss.backward()
+        optimizer.step()
+        #loss_list.append(loss.data)
+        loss_list.append(np.mean(loss_sublist))
+    correct=0
+    for x_test, y_test in validation_loader:
+        # set model to eval 
+        model.eval()
+        #make a prediction 
+        z = model(x_test)
+        #find max 
+        _,yhat = torch.max(z.data,1)
+        correct+=(yhat==y_test).sum().item()
+       
+        #Calculate misclassified  samples in mini-batch 
+        #hint +=(yhat==y_test).sum().item()
+        
+   
+    accuracy=correct/N_test
+    accuracy_list.append(accuracy)
+​
+​
+​
+Print out the Accuracy and plot the loss stored in the list loss_list for every iteration and take a screen shot.
+
+accuracy
+plt.plot(loss_list)
+plt.xlabel("iteration")
+plt.ylabel("loss")
+plt.show()
+​
